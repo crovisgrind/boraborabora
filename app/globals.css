@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ... */
+
+/* LIGHT THEME */
+:root {
+  --space-indigo: #1b264f;
+  --french-blue: #274690;
+  --smart-blue: #576ca8;
+  --graphite: #302b27;
+  --white-smoke: #f5f3f5;
+  --accent: #274690;
+  --accent-foreground: #ffffff;
+
+  /* Light mode */
+  --surface-1: #ffffff;
+  --surface-2: #f2f4ff;
+  --text-primary: #1b264f;
+  --text-secondary: #4a4f6a;
+  --border: #d9dce8;
+
+  --bg: var(--white-smoke);
+  --text-primary: var(--space-indigo);
+  --text-secondary: var(--smart-blue);
+
+  --surface-1: #ffffff;
+  --surface-2: #ececec;
+
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-1: #1c1f2a;
+    --surface-2: #2a2e3c;
+    --text-primary: #f5f6ff;
+    --text-secondary: #c1c7db;
+    --border: #3c4050;
+  }
+}
+
+/* DARK THEME */
+.dark {
+  --bg: #1b264f;
+  --text-primary: #f5f3f5;
+  --text-secondary: #cbd4ff;
+
+  --surface-1: #302b27;
+  --surface-2: #274690;
+
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
