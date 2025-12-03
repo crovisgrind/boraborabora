@@ -1,8 +1,9 @@
+import type { Metadata } from "next";
 import './globals.css';
 
-export const metadata = {
-  title: 'Corridas BR | Encontre seu Próximo Evento',
-  description: 'Seu catálogo de eventos de corrida de rua e trilha no Brasil.',
+export const metadata: Metadata = {
+  title: 'Corridas BR | Encontre seu PrÃ³ximo Evento',
+  description: 'Seu catÃ¡logo de eventos de corrida de rua e trilha no Brasil.',
 };
 
 export default function RootLayout({
@@ -13,7 +14,6 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body>
-        {/* Script para aplicar dark mode no carregamento */}
         <script
           dangerouslySetInnerHTML={{
             __html: `

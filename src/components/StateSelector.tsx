@@ -2,42 +2,39 @@
 
 "use client";
 
-import React from 'react';
+import React from "react";
 
 interface StateSelectorProps {
   selectedState: string | null;
   onStateChange: (state: string | null) => void;
 }
 
-// Lista de UFs Brasileiras
 const brazilianStates = [
-  { label: "Todos os Estados", value: null },
-  { label: "São Paulo (SP)", value: "SP" },
-  { label: "Rio de Janeiro (RJ)", value: "RJ" },
-  { label: "Minas Gerais (MG)", value: "MG" },
-  { label: "Paraná (PR)", value: "PR" },
-  { label: "Santa Catarina (SC)", value: "SC" },
-  { label: "Rio Grande do Sul (RS)", value: "RS" },
-  // 🚨 Adicione aqui os demais estados que você espera no seu crawler
+  { label: "📍 TODOS OS ESTADOS", value: null },
+  { label: "🏙️ SÃO PAULO (SP)", value: "SP" },
+  { label: "🏖️ RIO DE JANEIRO (RJ)", value: "RJ" },
+  { label: "⛰️ MINAS GERAIS (MG)", value: "MG" },
+  { label: "🌳 PARANÁ (PR)", value: "PR" },
+  { label: "❄️ SANTA CATARINA (SC)", value: "SC" },
+  { label: "🏔️ RIO GRANDE DO SUL (RS)", value: "RS" },
 ];
 
 export function StateSelector({ selectedState, onStateChange }: StateSelectorProps) {
-  
   const handleSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value === "" ? null : e.target.value;
     onStateChange(value);
   };
 
   return (
-    <div className="mb-8">
-      <label htmlFor="state-select" className="block text-sm font-medium text-(--text-secondary) mb-2">
-        Filtrar por Estado
+    <div>
+      <label htmlFor="state-select" className="block font-black text-lg mb-3">
+        🗺️ FILTRAR POR ESTADO
       </label>
       <select
         id="state-select"
         value={selectedState || ""}
         onChange={handleSelect}
-        className="w-full md:w-1/3 p-2 border border-(--surface-2) rounded-lg bg-(--surface-1) text-(--text-primary) shadow-sm focus:border-(--accent) focus:ring focus:ring-(--accent) focus:ring-opacity-50"
+        className="input-neo w-full md:w-64 font-bold text-lg bg-white"
       >
         {brazilianStates.map((state) => (
           <option key={state.label} value={state.value || ""}>
