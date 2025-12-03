@@ -1,72 +1,155 @@
-import { NextResponse } from "next/server";
-import { crawlCorridasBR, ScrapedRace } from "@/crawlers/corridasBR";
-import type { Race } from "@/types/races";
+// app/api/races/route.ts
 
-// Função de Normalização: Converte ScrapedRace (dado sujo) para Race (dado limpo/padronizado)
-function normalizeRace(scrapedRace: ScrapedRace): Race | null {
-    // 1. Geração de ID único (simplesmente encoda a URL base64)
-    const id = Buffer.from(scrapedRace.url).toString('base64'); 
+import { NextResponse } from 'next/server';
+import crawlTvComRunning from '@/crawlers/tvcomrunning';
+import { type Race } from '@/types/races'; 
+import crawlCorridasBR from '@/crawlers/corridasBR';
 
-    // 2. Normalizar Distâncias
-    // Ex: "5k / 10k" -> ["5K", "10K"]
-    const distances = (scrapedRace.distance || "")
-        .toUpperCase()
-        .split('/')
-        .map(d => d.trim().replace('KM', 'K').replace('KMS', 'K'))
-        .filter(d => d.length > 0);
+// -----------------------------------------------------------------
+// ESTRUTURA GLOBAL DE CACHE
+// -----------------------------------------------------------------
+interface CacheEntry {
+    data: Race[];
+    timestamp: number;
+}
 
-    // 3. Normalizar Localização (Cidade - UF)
-    const cityStateMatch = scrapedRace.city?.match(/([^,]+)\s*-\s*([A-Z]{2})/i);
-    const city = cityStateMatch ? cityStateMatch[1].trim() : scrapedRace.city || 'Desconhecida';
-    const stateCode = cityStateMatch ? cityStateMatch[2].toUpperCase() : 'BR';
+let dataCache: CacheEntry | null = null;
+const CACHE_DURATION_MS = 1000 * 60 * 60 * 24; // 24 horas
+
+// Mapeamento dos meses para normalização do formato brasileiro
+const MONTH_MAP: { [key: string]: number } = {
+    'JANEIRO': 0,
+    'FEVEREIRO': 1,
+    'MARÇO': 2,
+    'ABRIL': 3,
+    'MAIO': 4,
+    'JUNHO': 5,
+    'JULHO': 6,
+    'AGOSTO': 7,
+    'SETEMBRO': 8,
+    'OUTUBRO': 9,
+    'NOVEMBRO': 10,
+    'DEZEMBRO': 11,
+};
+
+function normalizeRace(race: Race): Race {
+    const rawDate = race.date; 
+    if (!rawDate || typeof rawDate !== 'string') { return race; }
+      
+    const now = new Date();
+    now.setHours(0, 0, 0, 0); 
+    const currentYear = now.getFullYear();
     
-    // 4. Normalizar Data (DD/MM/AAAA -> ISO Date)
-    let isoDate: string | null = null;
-    if (scrapedRace.date) {
-        try {
-            const [day, month, year] = scrapedRace.date.split('/').map(Number);
-            // new Date(year, monthIndex, day) - monthIndex é 0-based
-            const dateObj = new Date(year, month - 1, day); 
-            // Validação simples para evitar datas inválidas (ex: 30/02)
-            if (dateObj.getFullYear() === year && dateObj.getMonth() === month - 1 && dateObj.getDate() === day) {
-                 isoDate = dateObj.toISOString();
-            } else {
-                 throw new Error("Data inválida após parse.");
-            }
-        } catch (e) {
-            console.error(`Erro ao normalizar data: ${scrapedRace.date}`, e);
-            isoDate = null;
+    let day: number | undefined;
+    let month: number | undefined; // Mês baseado em 0 (Janeiro = 0, Dezembro = 11)
+    let year: number | undefined;
+
+    // --- CAMINHO 1: FORMATO BRASILEIRO COMPLETO (TVCom Running) ---
+    // Ex: "05 DE DEZEMBRO DE 2025"
+    const cleanedString = rawDate.toUpperCase().replace(/\s+/g, ' ');
+    const fullDateRegex = /(\d{1,2})\s+DE\s+([A-ZÇ]+)\s+DE\s+(\d{4})/;
+    const fullDateMatch = cleanedString.match(fullDateRegex);
+
+    if (fullDateMatch) {
+        day = parseInt(fullDateMatch[1], 10);
+        const monthName = fullDateMatch[2];
+        month = MONTH_MAP[monthName];
+        year = parseInt(fullDateMatch[3], 10);
+
+    } else {
+        // --- CAMINHO 2: FORMATO ABREVIADO (DD/MM ou DD.MM) ---
+        // Ex: "20/03"
+        const shortDateRegex = rawDate.match(/(\d{1,2})[./](\d{1,2})/); 
+        if (shortDateRegex) {
+            day = parseInt(shortDateRegex[1], 10);
+            // O mês no formato curto é baseado em 1, então subtraímos 1.
+            month = parseInt(shortDateRegex[2], 10) - 1; 
+            year = currentYear;
         }
     }
 
-    if (!scrapedRace.name || !isoDate) return null; // Ignora eventos sem nome ou data válida
+    // Se não conseguimos extrair Dia, Mês ou Ano, alertamos e pulamos.
+    if (day === undefined || month === undefined || isNaN(day) || isNaN(month) || month < 0 || month > 11) {
+        console.warn(`Erro ao normalizar data: Formato inesperado. Valor: ${rawDate} para ${race.title}.`);
+        return race;
+    }
+
+    // 1. Tenta usar o ano extraído (se disponível) ou o ano atual.
+    let dateObject = new Date(year || currentYear, month, day);
+
+    // 2. Se a data for no passado ou se estivermos usando o ano atual para o formato DD/MM.
+    // E se o mês da corrida for anterior ao mês atual, avança o ano.
+    // Isso resolve o problema de corridas de Dezembro/2025 que aparecem em Janeiro/2026.
+    if ((!year || dateObject < now) && month < now.getMonth()) {
+        const targetYear = (year || currentYear) + 1;
+        dateObject = new Date(targetYear, month, day);
+    }
+
+    // 3. Verificação de Sanidade
+    if (isNaN(dateObject.getTime())) {
+      console.error(`Erro fatal: Data não pôde ser normalizada. Valor: ${rawDate}`);
+      return race; 
+    }
 
     return {
-        id,
-        title: scrapedRace.name,
-        location: `${city} - ${stateCode}`,
-        url: scrapedRace.url,
-        date: isoDate,
-        distances: distances,
-        type: 'road', 
-        state: stateCode,
-    } as Race;
+      ...race,
+      // Retorna a data no formato ISO padrão (AAAA-MM-DD)
+      date: dateObject.toISOString().split('T')[0],
+    };
 }
 
-// Handler da Rota GET (/api/races)
-export async function GET() {
-  console.log("Iniciando pipeline de crawl & normalize...");
-  
-  // 1. Executar Crawler
-  const corridasBrData = await crawlCorridasBR();
+// -----------------------------------------------------------------
+// FUNÇÃO PRINCIPAL DA ROTA: EXPORT NOMEADO (NUNCA DEFAULT!)
+// -----------------------------------------------------------------
+// 🚨 CORREÇÃO: Removida a palavra 'default'
+export async function GET(request: Request) { 
+  try {
+    const now = Date.now();
+    
+    // 1. VERIFICAÇÃO DO CACHE
+    if (dataCache && now - dataCache.timestamp < CACHE_DURATION_MS) {
+        const remainingMinutes = Math.round((dataCache.timestamp + CACHE_DURATION_MS - now) / 60000);
+        console.log(`[CACHE HIT] Retornando dados do cache. Tempo de vida restante: ${remainingMinutes} minutos.`);
+        return NextResponse.json(dataCache.data);
+    }
+    
+    // 2. CACHE MISS
+    console.log("Iniciando pipeline de crawl & normalize (CACHE MISS)...");
+    
+    // Chamada do Crawler Sequencial (com delay de 5s)
+    const rawRaces = await crawlTvComRunning();
 
-  // 2. Normalizar e Filtrar dados inválidos
-  const allNormalizedRaces = corridasBrData
-    .map(normalizeRace)
-    .filter((race): race is Race => race !== null);
+    const normalizedRaces = rawRaces.map(normalizeRace);
 
-  console.log(`Pipeline concluída. ${allNormalizedRaces.length} eventos prontos.`);
-  
-  // 3. Retornar dados
-  return NextResponse.json(allNormalizedRaces);
+    console.log(`Pipeline concluída. ${normalizedRaces.length} eventos prontos.`);
+
+    // 3. ATUALIZAÇÃO DO CACHE
+    dataCache = {
+        data: normalizedRaces,
+        timestamp: now,
+    };
+    
+    return NextResponse.json(normalizedRaces);
+
+  } catch (error) {
+    console.error("Erro na rota /api/races:", error);
+
+    // Retorna cache expirado como fallback
+    if (dataCache) {
+         console.warn("Erro no scraping. Retornando cache expirado como fallback.");
+         return NextResponse.json(dataCache.data, { 
+             status: 200 
+         });
+    }
+
+    return new Response(JSON.stringify({ 
+        message: "Erro ao processar as corridas", 
+        details: error instanceof Error ? error.message : "Erro desconhecido" 
+    }), {
+        status: 500,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    });
+  }
 }

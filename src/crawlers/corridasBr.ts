@@ -1,112 +1,150 @@
 // src/crawlers/corridasBR.ts
 
-import axios, { AxiosError } from "axios";
-import * as cheerio from "cheerio";
-import * as crypto from "crypto";
-import type { ScrapedRace } from "../types/races";
+import * as cheerio from 'cheerio';
+import { type Race } from '@/types/races'; 
+import { URL } from 'url';
 
-// Lista com as siglas dos 27 Estados e DF
-const ESTADOS: string[] = [
-  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
-  "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
-  "RS", "RO", "RR", "SC", "SP", "SE", "TO"
+const BRAZILIAN_STATES_UF: string[] = [
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
+    "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
+    "RS", "RO", "RR", "SC", "SP", "SE", "TO"
 ];
+const BASE_URL = "https://corridasbr.com.br";
+const CALENDARIO_PATH = "/calendario.asp";
+const RACE_LIST_CONTAINER_SELECTOR = 
+    'body > table:nth-child(4) > tbody > tr > td:nth-child(1) > table:nth-child(5)';
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const BASE_URL = "https://corridasbr.com.br/";
-const CALENDARIO_PATH = "/calendario.asp"; 
+function parseDistances(distancesRaw: string): string[] {
+    return distancesRaw.split(/[,/]/)
+        .map(d => d.trim().toUpperCase().replace(/KM$/, 'K').replace('K ', 'K'))
+        .filter(d => d.length > 0)
+        .map(d => d === 'MEIA MARATONA' ? '21.1K' : d) 
+        .map(d => d.includes('MARATONA') && d.length > 8 ? '42.2K' : d) 
+        .map(d => d.includes('K') && parseFloat(d) > 42.2 ? 'ULTRA' : d) 
+        .filter((d, i, arr) => arr.indexOf(d) === i); 
+}
 
-// Seletor que aponta para a tabela que contém a lista de corridas.
-// MANTIDO: 'body > table:nth-child(4) > tbody > tr > td:nth-child(1) > table:nth-child(5)'
-const RACE_LIST_CONTAINER_SELECTOR = 'body > table:nth-child(4) > tbody > tr > td:nth-child(1) > table:nth-child(5)';
 
-export async function crawlCorridasBR(): Promise<ScrapedRace[]> {
-  console.log("[Crawler CorridasBR] Iniciando busca sequencial por estado...");
-  let allScrapedRaces: ScrapedRace[] = [];
-  const start = Date.now();
-
-  for (const estado of ESTADOS) {
-    const URL_ESTADO = `${BASE_URL}${estado}${CALENDARIO_PATH}`;
-
-    try {
-      const { data: html } = await axios.get(URL_ESTADO, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        },
-        timeout: 15000,
-      });
-
-      const $ = cheerio.load(html);
-      const racesFromState: ScrapedRace[] = [];
-      let raceCount = 0;
-
-      const raceTable = $(RACE_LIST_CONTAINER_SELECTOR);
-
-      raceTable.find('> tbody > tr').each((i, element) => {
-        // Ignora as duas primeiras linhas (i < 2) - prováveis cabeçalhos
-        if (i < 2) return; 
-
-        const tds = $(element).find('td');
-        
-        // --------------------------------------------------------------------------
-        // 🚨 FOCO NA REVISÃO: Estes índices .eq(n) devem coincidir com as colunas!
-        // --------------------------------------------------------------------------
-        
-        // Coluna 1 (índice 0): Título e Link
-        // Tenta pegar o primeiro link <a> dentro da primeira célula
-        const titleElement = tds.eq(0).find('a').first(); 
-        const title = titleElement.text().trim();
-        const relativeUrl = titleElement.attr('href');
-        const url = relativeUrl ? `${BASE_URL}${relativeUrl}` : '';
-
-        // Coluna 2 (índice 1): Data
-        const dateText = tds.eq(1).text().trim(); 
-
-        // Coluna 3 (índice 2): Localização (cidade/detalhe)
-        const cityDetail = tds.eq(2).text().trim(); 
-        const location = cityDetail ? `${cityDetail}, ${estado}` : estado;
-
-        // Coluna 4 (índice 3): Distâncias
-        const distanceText = tds.eq(3).text().trim();
-        const distances = distanceText ? distanceText.split('/').map(d => d.trim()).filter(d => d.length > 0) : ['Não informada'];
-
-        if (title) {
-            racesFromState.push({ 
-                id: crypto.randomUUID(), 
-                title: title,
-                type: (title.toLowerCase().includes('trilha') || distanceText.toLowerCase().includes('trail')) ? 'trail' : 'road', 
-                location: location, 
-                date: dateText,
-                distances: distances,
-                url: url,
-                state: estado, 
-            } as ScrapedRace);
-            raceCount++;
-        }
-      });
-      
-      allScrapedRaces.push(...racesFromState);
-      
-      console.log(`[Crawler CorridasBR] HTML de ${estado} capturado. Encontradas ${raceCount} corridas. Total acumulado: ${allScrapedRaces.length}`);
-      
-    } catch (error) {
-      const errorMessage = error instanceof AxiosError ? error.message : "Erro desconhecido";
-      // Loga um aviso para 429 ou 500, mas não interrompe a busca.
-      console.warn( 
-        `[Crawler CorridasBR] Falha em ${estado} (${URL_ESTADO}):`,
-        errorMessage
-      );
+async function processState(uf: string): Promise<Race[]> {
+    // ⚠️ Importante: Verifica se o UF é válido antes de prosseguir
+    if (!BRAZILIAN_STATES_UF.includes(uf)) {
+        console.warn(`[WARN] UF inválido (${uf}) ignorado.`);
+        return [];
     }
     
-    // Aumenta o delay para evitar o erro 429
-    await new Promise(resolve => setTimeout(resolve, 1200)); // AGORA 1.2 SEGUNDOS
-  }
+    const targetUrl = `${BASE_URL}/${uf}${CALENDARIO_PATH}`;
+    const racesForState: Race[] = [];
 
-  const end = Date.now();
-  const duration = ((end - start) / 1000).toFixed(2);
-  
-  console.log(
-    `[Crawler CorridasBR] Busca completa em ${duration}s. ${allScrapedRaces.length} eventos prontos.`
-  );
-  return allScrapedRaces;
+    try {
+        const response = await fetch(targetUrl, {
+             headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            }
+        });
+
+        if (!response.ok) {
+            console.warn(`[WARN] Falha ao carregar ${uf}: ${response.statusText}. Pulando.`);
+            return racesForState; 
+        }
+
+        const buffer = await response.arrayBuffer();
+        const html = new TextDecoder('iso-8859-1').decode(buffer);
+        const $ = cheerio.load(html);
+
+        const raceTable = $(RACE_LIST_CONTAINER_SELECTOR);
+
+        if (raceTable.length === 0) {
+            return racesForState;
+        }
+
+        raceTable.find('tbody > tr').each((i, element) => {
+            
+            // Ignora linhas de cabeçalho
+            if (i < 2) return; 
+
+            const tds = $(element).find('td');
+            
+            if (tds.length < 4) return;
+            
+            const dateRaw = tds.eq(0).text().trim();           
+            const cityDetail = tds.eq(1).text().trim();        
+            const $titleColumn = tds.eq(2);
+            const $link = $titleColumn.find('a').first(); 
+            const title = $link.text().trim();
+            const distancesText = tds.eq(3).text().trim();      
+
+            // 🔑 CORREÇÃO DA URL: Remove o nome da corrida que quebra o link
+            const fullRelativePath = $link.attr('href')?.trim();
+            let urlRelative: string | undefined = fullRelativePath;
+
+            if (fullRelativePath) {
+                // Encontra a posição do primeiro '&' e corta o resto.
+                const ampersandIndex = fullRelativePath.indexOf('&');
+                if (ampersandIndex !== -1) {
+                    urlRelative = fullRelativePath.substring(0, ampersandIndex);
+                }
+            }
+
+
+            if (title && urlRelative && dateRaw) {
+                
+                const location = cityDetail ? `${cityDetail}, ${uf}` : uf;
+                const type: 'road' | 'trail' = title.toLowerCase().includes('trilha') || location.toLowerCase().includes('trilha') ? 'trail' : 'road';
+                const distances = parseDistances(distancesText);
+
+                const newRace: Race = {
+                    id: `${uf}-${title}-${dateRaw}`.replace(/\s/g, '_'), 
+                    title: title,
+                    location: location,
+                    date: dateRaw, 
+                    distances: distances,
+                    type: type,
+                    url: new URL(urlRelative, BASE_URL).href, 
+                    // 🔑 CORREÇÃO DO FILTRO: Garantimos que o estado seja sempre o UF válido da iteração
+                    state: uf,
+                };
+                
+                // 💡 DEBUG: Log para inspecionar o estado das primeiras corridas
+                if (racesForState.length < 2) {
+                     console.log(`[DEBUG RACE ${uf}] Race State: '${newRace.state}', Title: '${newRace.title}'`);
+                }
+
+                racesForState.push(newRace);
+            }
+        });
+
+    } catch (error) {
+        console.error(`Erro inesperado durante o crawling para ${uf}:`, error);
+    }
+    
+    return racesForState;
+}
+
+// -----------------------------------------------------------------
+// CRAWLER PRINCIPAL SEQUENCIAL COM DELAY E EXPORT DEFAULT
+// -----------------------------------------------------------------
+export default async function crawlCorridasBR(): Promise<Race[]> {
+    const allRaces: Race[] = [];
+    const DELAY_MS = 5000; 
+
+    console.log("Iniciando crawl sequencial (com DELAY ALTO) para múltiplos estados...");
+    const start = Date.now();
+
+    for (const uf of BRAZILIAN_STATES_UF) {
+        
+        const races = await processState(uf);
+        allRaces.push(...races);
+        
+        console.log(`[INFO] ${uf} concluído. Total até agora: ${allRaces.length} corridas.`);
+
+        await delay(DELAY_MS); 
+    }
+
+    const duration = ((Date.now() - start) / 1000).toFixed(2);
+    console.log(
+        `[Crawler CorridasBR] Busca completa em ${duration}s. ${allRaces.length} eventos prontos.`
+    );
+
+    return allRaces;
 }

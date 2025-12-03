@@ -6,8 +6,9 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card"
+      // ⚠️ CORRIGIDO: Usando as variáveis CSS customizadas e garantindo arredondamento
       className={cn(
-        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
+        "bg-[var(--surface-1)] text-[var(--text-primary)] flex flex-col gap-6 rounded-xl border border-[var(--border)] py-6 shadow-sm",
         className
       )}
       {...props}
@@ -42,7 +43,7 @@ function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-description"
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn("text-[var(--text-secondary)] text-sm", className)}
       {...props}
     />
   )

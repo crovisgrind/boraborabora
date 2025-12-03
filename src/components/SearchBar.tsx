@@ -1,10 +1,13 @@
-// components/SearchBar.tsx
+// ========================================
+// 5. SEARCH BAR PREMIUM
+// ========================================
 
+// components/SearchBar.tsx
 "use client";
 
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Search } from "lucide-react";
 
 interface Props {
   onTextSearchChange: (v: string) => void;
@@ -12,7 +15,7 @@ interface Props {
 
 export function SearchBar({ onTextSearchChange }: Props) {
   const [textSearch, setTextSearch] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [focused, setFocused] = useState(false);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -21,20 +24,40 @@ export function SearchBar({ onTextSearchChange }: Props) {
   };
 
   return (
-    <section className="w-full py-10 bg-(--bg)">
-      <div className="container mx-auto px-6 max-w-4xl text-center">
-        <h2 className="text-3xl font-semibold text-(--text-primary) mb-4">
-          Find Your Next Race
-        </h2>
-
-        {/* --- Text Search (Title/Description) --- */}
-        <Input
+    <div className="w-full">
+      <div className={`
+        relative flex items-center gap-3 px-5 py-3 rounded-full
+        bg-[var(--surface-1)] border-2 transition-all duration-300
+        ${focused 
+          ? "border-[var(--accent)] shadow-lg ring-2 ring-[var(--accent)]/20" 
+          : "border-[var(--border)] shadow-md"
+        }
+      `}>
+        <Search className={`transition-colors duration-300 ${focused ? "text-[var(--accent)]" : "text-[var(--text-secondary)]"}`} size={20} />
+        
+        <input
+          type="text"
           value={textSearch}
           onChange={handleTextChange}
-          placeholder="Filter by race name or location"
-          className="w-full p-4 text-lg rounded-xl bg-(--surface-1) border-(--surface-2)"
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder="Buscar por nome ou localização..."
+          className="flex-1 bg-transparent outline-none text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)]"
         />
+        
+        {textSearch && (
+          <button
+            onClick={() => {
+              setTextSearch("");
+              onTextSearchChange("");
+            }}
+            className="text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+            aria-label="Limpar busca"
+          >
+            ✕
+          </button>
+        )}
       </div>
-    </section>
+    </div>
   );
 }

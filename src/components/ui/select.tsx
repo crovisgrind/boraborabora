@@ -14,7 +14,8 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     <select
       ref={ref}
       className={cn(
-        "flex h-10 w-full rounded-md border border-(--surface-2) bg-(--surface-1) px-3 py-2 text-sm text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--accent) disabled:cursor-not-allowed disabled:opacity-50",
+        // ⚠️ CORRIGIDO: border-(--...) -> border-[var(--...)] etc.
+        "flex h-10 w-full rounded-md border border-[var(--surface-2)] bg-[var(--surface-1)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
       {...props}
@@ -34,7 +35,8 @@ export const SelectTrigger = React.forwardRef<
   <button
     ref={ref}
     className={cn(
-      "flex h-10 w-full items-center justify-between rounded-md border border-(--surface-2) bg-(--surface-1) px-3 py-2 text-sm text-(--text-primary) cursor-pointer focus:outline-none focus:ring-2 focus:ring-(--accent)",
+      // ⚠️ CORRIGIDO: border-(--...) -> border-[var(--...)] etc.
+      "flex h-10 w-full items-center justify-between rounded-md border border-[var(--surface-2)] bg-[var(--surface-1)] px-3 py-2 text-sm text-[var(--text-primary)] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--accent)]",
       className
     )}
     {...props}
@@ -47,7 +49,8 @@ interface SelectValueProps {
 }
 
 export const SelectValue: React.FC<SelectValueProps> = ({ placeholder }) => (
-  <span className="text-(--text-secondary)">{placeholder || "Select..."}</span>
+  // ⚠️ CORRIGIDO: text-(--text-secondary) -> text-[var(--text-secondary)]
+  <span className="text-[var(--text-secondary)]">{placeholder || "Select..."}</span>
 );
 
 interface SelectContentProps {
@@ -55,7 +58,7 @@ interface SelectContentProps {
 }
 
 export const SelectContent: React.FC<SelectContentProps> = ({ children }) => (
-  <div className="absolute mt-1 w-full rounded-md border border-(--surface-2) bg-(--surface-1) shadow-md z-50">
+  <div className="absolute mt-1 w-full rounded-md border border-[var(--surface-2)] bg-[var(--surface-1)] shadow-md z-50">
     {children}
   </div>
 );
